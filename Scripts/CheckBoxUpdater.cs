@@ -10,16 +10,19 @@ public partial class CheckBoxUpdater : Node2D
 		installerData.GCAdapterDriversShouldInstall = toggled_on;
 	}
 
-
 	private void _on_kar_dont_checkbox_toggled(bool toggled_on)
 	{
-		installerData.KARDontShouldInstall = toggled_on;
+		installerData.KARDontDownload = toggled_on;
 	}
 
-
-	private void _on_auto_start_checkbox_toggled(bool toggled_on)
+	private void _on_ROMNoDownload_checkbox_toggled(bool toggled_on)
 	{
-		installerData.KWShouldAutoRun = toggled_on;
+		installerData.downloadRoms = !toggled_on;
+	}
+
+	private void _on_SkinPacksDownload_checkbox_toggled(bool toggled_on)
+	{
+		installerData.downloadSkinPacks = toggled_on;
 	}
 
 }

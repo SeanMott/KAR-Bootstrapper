@@ -2,6 +2,7 @@ using Godot;
 using System;
 using System.IO;
 using System.Diagnostics;
+using System.Data.Common;
 
 public partial class DownloadManager : Node2D
 {
@@ -14,22 +15,20 @@ public partial class DownloadManager : Node2D
 	[Export] Theme itemIsDownloading_FontColor;
 	[Export] Theme systemEventInProgess_FontColor;
 
-	//Legacy Dolphin download
-	string KARphin_Legacy_KWQI = "KWQI/KARphinLegacy.KWQI";
+	KWQI KWStructureBlob = new KWQI();
+	KWQI KARphinBlob = new KWQI();
 
-	//modern KARphin downloads
-	string KARphin_Windows_DownloadURL = "";
-	string KARphin_Mac_DownloadURL = "";
+	KWQI SkinPackBlob = new KWQI();
 
-	//KAR Workshop downloads
-	string KARWorkshop_Windows_DownloadURL = "";
-	string KARWorkshop_Mac_DownloadURL = "";
+	KWQI ROMBlob = new KWQI();
+
+	KWQI KARDontBlob = new KWQI();
+	KWQI GCAdapterBlob = new KWQI();
 
 	//KARDon't
 	string KARDont_DownloadURL = "https://github.com/SeanMott/KARDont/releases/download/1.0.0-stable/KARDont.7z";
 
-	//Hack Pack
-	string HP_KWQI = "KWQI/HP.KWQI";
+	string ROMBlobURL = "https://github.com/SeanMott/KAR-Workshop/releases/download/KAR-Installs_Netplay_1/ROMs.tar.br"; //the URL for the ROMs on Windows
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
@@ -70,17 +69,17 @@ public partial class DownloadManager : Node2D
 		if (!Directory.Exists(installerData.installPath + "/ROMs"))
 			Directory.CreateDirectory(installerData.installPath + "/ROMs");
 
-		//we create a texture pack folder for all texture packs
-		if (!Directory.Exists(installerData.installPath + "/TexturePacks"))
-			Directory.CreateDirectory(installerData.installPath + "/TexturePacks");
-
-		//we create a audio pack folder for all audio packs
-		if (!Directory.Exists(installerData.installPath + "/AudioPacks"))
-			Directory.CreateDirectory(installerData.installPath + "/AudioPacks");
-
 		//we also create a KWQI folder for all kWQI files
 		if (!Directory.Exists(installerData.installPath + "/KWQI"))
 			Directory.CreateDirectory(installerData.installPath + "/KWQI");
+
+		//we create a Mods  folder for all Mods
+		if (!Directory.Exists(installerData.installPath + "/Mods"))
+			Directory.CreateDirectory(installerData.installPath + "/Mods");
+
+		//we create a Mods  folder for all Mods
+		if (!Directory.Exists(installerData.installPath + "/Mods"))
+			Directory.CreateDirectory(installerData.installPath + "/Mods");
 	}
 
 	//generates the settings files and lets KARphin and Workshop know about eachother
@@ -140,101 +139,214 @@ public partial class DownloadManager : Node2D
 	public void StartDownloads()
 	{
 		//generate folder structures
-		GenerateFolderStructure();
+		//GenerateFolderStructure();
 		//write KAR Workshop settings and other files
-		GenerateKWSettings();
+		//GenerateKWSettings();
 
-		//check what platform we are on, execute KARphin legacy
-		KWQI KARphinLegacy_KWQIData = KWQI.LoadKWQI(KARphin_Legacy_KWQI);
-
-		//runs Duma for legecy KARphin
+		//download the base KAR Netplay blob package
+		bool structureBlobIsDone = false;
 		Process p;
-		KWQIPackaging.DownloadContent_Archive_Windows(out p, "SupportProgs/Duma.exe", KARphinLegacy_KWQIData.displayName, KARphinLegacy_KWQIData.ContentDownloadURL_Windows,
-		installerData.installPath + "/Clients");
-		AddTextNotification("KARphin Legacy download started...", itemIsDownloading_FontColor);
+		//KWStructureBlob.ContentDownloadURL_Windows = "https://github.com/SeanMott/KAR-Workshop/releases/download/KAR-Installs_Netplay_1/KWStructure.tar.br";
+		//KWStructureBlob.author = "Jas";
+		//KWStructureBlob.contentVersion = "1.0.0";
+		//KWStructureBlob.date = "08-09-2024";
+		//KWStructureBlob.displayName = "KW Structure Blob";
+		//KWStructureBlob.internalName = "KWStructureBlob";
+		//KWStructureBlob.doesItOnlyWorkOnASpecificOS = false;
+		//KWQI.WriteKWQI(installerData.installPath, "KWStructureBlob", KWStructureBlob);
+		KWStructureBlob = KWQI.LoadKWQI("KWQI/KWStructureBlob.KWQI");
+		KWQIPackaging.DownloadContent_Archive_Windows(out p, "SupportProgs/Windows/Duma.exe", KWStructureBlob.internalName, KWStructureBlob.ContentDownloadURL_Windows,
+		installerData.installPath);
+		AddTextNotification("Netplay Boilerplate Blob download started...", itemIsDownloading_FontColor);
 
-		//doesn't matter the platform, get HP
-		KWQI HP_KWQIData = KWQI.LoadKWQI(HP_KWQI);
+		//extra goodies download flags
+		bool skinPackIsDone = false;
+		bool ROMsIsDone = false;
+		bool KARDontIsDone = false;
+		bool GCAdapterDriverIsDone = false;
+		Process skinPack = new Process();
+		Process ROMs = new Process();
+		Process KARDont = new Process();
+		Process GCAdapterDriver = new Process();
 
-		//runs Duma for Hack Pack
-		Process hp;
-		KWQIPackaging.DownloadContent_ROM_Windows(out hp, "SupportProgs/Duma.exe", HP_KWQIData.displayName, HP_KWQIData.ContentDownloadURL_Windows,
-		installerData.installPath + "/ROMs");
-		AddTextNotification("HP download started...", itemIsDownloading_FontColor);
-
-		//runs Duma for KARDon't
-
-		//checks for each of the Downloads
+		//process each of the downloads
 		bool doneDownloading = false;
-		bool KARphinIsDone = false, HPIsDone = false, KARDontIsDone = false;
-		
-		//HPIsDone = true;
-
 		while(!doneDownloading)
 		{
-			//if KARphin is done
-			if(!KARphinIsDone && p.HasExited)
+			//if structure blob is done
+			if(!structureBlobIsDone && p.HasExited)
 			{
 				//validate the file completed
-				AddTextNotification("KARphin Legacy done downloading, unpacking...", itemHasFinished_FontColor);
+				AddTextNotification("Netplay Boilerplate Blob done downloading, unpacking...", itemHasFinished_FontColor);
 
-				//unpacks KARphin
-				KWQIPackaging.UnpackArchive_Windows(installerData.installPath + "/Clients", KARphinLegacy_KWQIData.displayName, installerData.installPath, true);
-				//p = new Process();
-				//p.StartInfo.FileName = installerData.installPath + "/Clients/" + KARphinLegacy_KWQIData.displayName + ".exe";
-				//p.StartInfo.Arguments = "-o " + installerData.installPath + " -y";
-				//p.StartInfo.WorkingDirectory = installerData.installPath;
-				//p.Start();
-				//p.WaitForExit();
+				//unpacks the blob
+				KWQIPackaging.UnpackArchive_Windows(installerData.installPath, KWStructureBlob.internalName, installerData.installPath, true,
+				"SupportProgs/Windows/brotli.exe");
 
-				//deletes the 7zip unpacking exe
-				//System.IO.File.Delete(installerData.installPath + "/Clients/KARphin_Legacy.exe");
-				AddTextNotification("KARphin Legacy aquired", itemHasFinished_FontColor);
+				AddTextNotification("Netplay Boilerplate Blob aquired", itemHasFinished_FontColor);
 
-				KARphinIsDone = true;
+				//copy the contents into the install directory and delete the package folder
+				string KWStructurePackageFolder = installerData.installPath + "/KWStructure";
+				string[] entries = Directory.GetFileSystemEntries(KWStructurePackageFolder);
+				foreach (string fileOrDir in entries)
+				{
+					Directory.Move(fileOrDir, Path.Combine(installerData.installPath, 
+					fileOrDir.Substring(KWStructurePackageFolder.Length + 1)));
+				}
+				Directory.Delete(KWStructurePackageFolder);
+
+				AddTextNotification("Folder Structure generated", systemEventInProgess_FontColor);
+
+				structureBlobIsDone = true;
+
+				//kicks off the other downloads
+
+				///kicks off the ROMs since they're the largest item to down
+				if(installerData.downloadRoms)
+				{
+					//KWQIPackaging.DownloadContent_Archive_Windows(out ROMs, "SupportProgs/Windows/Duma.exe", "ROMs", ROMBlobURL,
+					//installerData.installPath);
+
+					ROMsIsDone = true;
+				}
+				else
+				{
+					ROMsIsDone = true;
+				}
+
+				//kicks off any skin packs
+				if(installerData.downloadSkinPacks)
+				{
+					//SkinPackBlob.ContentDownloadURL_Windows = "https://github.com/SeanMott/KAR-Workshop/releases/download/KAR-Installs_Netplay_1/SkinPacks.tar.br";
+					//SkinPackBlob.author = "Jas";
+					//SkinPackBlob.contentVersion = "1.0.0";
+					//SkinPackBlob.date = "08-09-2024";
+					//SkinPackBlob.displayName = "Backside Skin Packs";
+					//SkinPackBlob.internalName = "SkinPacks";
+					//SkinPackBlob.doesItOnlyWorkOnASpecificOS = false;
+					//KWQI.WriteKWQI(installerData.installPath, "BacksideSkinPacks", SkinPackBlob);
+					SkinPackBlob = KWQI.LoadKWQI(installerData.installPath + "/KWQI/BacksideSkinPacks.KWQI");
+
+					KWQIPackaging.DownloadContent_Archive_Windows(out skinPack, "SupportProgs/Windows/Duma.exe", SkinPackBlob.internalName, SkinPackBlob.ContentDownloadURL_Windows,
+					installerData.installPath);
+
+					//skinPackIsDone = true;
+				}
+				else
+				{
+					skinPackIsDone = true;
+				}
+
+				//GC Adapter Driver
+				if(installerData.GCAdapterDriversShouldInstall)
+				{
+					//KWQIPackaging.DownloadContent_Archive_Windows(out ROMs, "SupportProgs/Windows/Duma.exe", "ROMs", ROMBlobURL,
+					//installerData.installPath);
+					GCAdapterDriverIsDone = true;
+				}
+				else
+				{
+					GCAdapterDriverIsDone = true;
+				}
+
+				//KARdont
+				if(installerData.KARDontDownload)
+				{
+					//KWQIPackaging.DownloadContent_Archive_Windows(out ROMs, "SupportProgs/Windows/Duma.exe", "ROMs", ROMBlobURL,
+					//installerData.installPath);
+					KARDontIsDone = true;
+				}
+				else
+				{
+					KARDontIsDone = true;
+				}
 			}
 
-			//if Hack Pack is done
-			if(!HPIsDone && hp.HasExited)
+			//if ROMs are done
+			/*if(structureBlobIsDone && !ROMsIsDone && ROMs.HasExited)
 			{
 				//validate the file completed
-				AddTextNotification("HP done downloading, unpacking...", itemHasFinished_FontColor);
+				AddTextNotification("ROMs Downloaded, unpacking...", itemHasFinished_FontColor);
 
-				//unpacks HP
-				KWQIPackaging.UnpackROM_Windows("SupportProgs/brotli.exe", installerData.installPath + "/ROMs", HP_KWQIData.displayName, true);
-				//hp = new Process();
-				//hp.StartInfo.FileName = "SupportProgs/brotli.exe";
-				//hp.StartInfo.Arguments = "--decompress -o HP_101.iso HP_101.br";
-				//hp.StartInfo.WorkingDirectory = installerData.installPath + "/ROMs";
-				//hp.Start();
-				//hp.WaitForExit();
-				
-				//deletes the brotil format
-				//System.IO.File.Delete(installerData.installPath + "/ROMs/HP_101.br");
-				AddTextNotification("HP aquired", itemHasFinished_FontColor);
+				//unpacks the blob
+				KWQIPackaging.UnpackArchive_Windows(installerData.installPath, "ROMs-package", installerData.installPath, true,
+				"SupportProgs/Windows/brotli.exe");
 
-				HPIsDone = true;
+				AddTextNotification("ROMs aquired", itemHasFinished_FontColor);
 
+				//copy the contents into the install directory and delete the package folder
+				string KWStructurePackageFolder = installerData.installPath + "/ROMs-package";
+				string[] entries = Directory.GetFileSystemEntries(KWStructurePackageFolder);
+				foreach (string fileOrDir in entries)
+				{
+					Directory.Move(fileOrDir, Path.Combine(installerData.installPath + "/ROMs", 
+					fileOrDir.Substring(KWStructurePackageFolder.Length + 1)));
+				}
+				Directory.Delete(KWStructurePackageFolder);
+
+				AddTextNotification("ROMs Gotten", systemEventInProgess_FontColor);
+
+				ROMsIsDone = true;
+			}*/
+
+			//if Skin Packs are done
+			if(structureBlobIsDone && !skinPackIsDone && skinPack.HasExited)
+			{
+				//validate the file completed
+				AddTextNotification("Skins Downloaded, unpacking...", itemHasFinished_FontColor);
+
+				//unpacks the blob
+				KWQIPackaging.UnpackArchive_Windows(installerData.installPath, SkinPackBlob.internalName, installerData.installPath, true,
+				"SupportProgs/Windows/brotli.exe");
+
+				AddTextNotification("Skins aquired", itemHasFinished_FontColor);
+
+				//copy the contents into the install directory and delete the package folder
+				string KWStructurePackageFolder = installerData.installPath + "/SkinPacks";
+				string[] entries = Directory.GetFileSystemEntries(KWStructurePackageFolder);
+				foreach (string fileOrDir in entries)
+				{
+					Directory.Move(fileOrDir, Path.Combine(installerData.installPath + "/Mods/SkinPacks", 
+					fileOrDir.Substring(KWStructurePackageFolder.Length + 1)));
+				}
+				Directory.Delete(KWStructurePackageFolder);
+
+				AddTextNotification("Skin Pack Gotten", systemEventInProgess_FontColor);
+
+				skinPackIsDone = true;
 			}
 
 			//if both are done
-			if(KARphinIsDone && HPIsDone)
+			if(structureBlobIsDone && skinPackIsDone && ROMsIsDone)
 				break;
 		}
 
-		//configure Dolphin Legacy
-		string dolphinINI = "[General]\nLastFilename = C:/Users/Jas/Desktop/ROMs/GC/Kirby Air Ride [GKYE01]/game.iso\nShowLag = False\nShowFrameCount = False\nISOPaths = 1\nRecursiveISOPaths = False\nNANDRootPath = \nDumpPath = \nWirelessMac = \nWiiSDCardPath = \nISOPath0 = ";
-		dolphinINI += installerData.installPath + "/ROMs";
-		dolphinINI += "\n[Interface]\nConfirmStop = False\nUsePanicHandlers = True\nOnScreenDisplayMessages = True\nHideCursor = True\nAutoHideCursor = False\nMainWindowPosX = 918\nMainWindowPosY = 251\nMainWindowWidth = 660\nMainWindowHeight = 444\nLanguageCode = \nShowToolbar = True\nShowStatusbar = True\nShowLogWindow = False\nShowLogConfigWindow = False\nExtendedFPSInfo = False\nThemeName = Clean Pink\nPauseOnFocusLost = False\nDisableTooltips = False\n[Display]\nFullscreenResolution = Auto\nFullscreen = False\nRenderToMain = False\nRenderWindowXPos = 900\nRenderWindowYPos = 62\nRenderWindowWidth = 822\nRenderWindowHeight = 961\nRenderWindowAutoSize = False\nKeepWindowOnTop = False\nProgressiveScan = False\nPAL60 = False\nDisableScreenSaver = True\nForceNTSCJ = False\n[GameList]\nListDrives = False\nListWad = True\nListElfDol = True\nListWii = True\nListGC = True\nListJap = True\nListPal = True\nListUsa = True\nListAustralia = True\nListFrance = True\nListGermany = True\nListItaly = True\nListKorea = True\nListNetherlands = True\nListRussia = True\nListSpain = True\nListTaiwan = True\nListWorld = True\nListUnknown = True\nListSort = 3\nListSortSecondary = 0\nColorCompressed = True\nColumnPlatform = True\nColumnBanner = True\nColumnNotes = True\nColumnFileName = True\nColumnID = True\nColumnRegion = True\nColumnSize = True\nColumnState = False\n[Core]\nHLE_BS2 = False\nTimingVariance = 8\nCPUCore = 1\nFastmem = True\nCPUThread = True\nDSPHLE = True\nSyncOnSkipIdle = True\nSyncGPU = False\nSyncGpuMaxDistance = 200000\nSyncGpuMinDistance = -200000\nSyncGpuOverclock = 1.00000000\nFPRF = False\nAccurateNaNs = False\nDefaultISO = \nDVDRoot = \nApploader = \nEnableCheats = True\nSelectedLanguage = 0\nOverrideGCLang = False\nDPL2Decoder = False\nTimeStretching = False\nRSHACK = False\nLatency = 0\nMemcardAPath = F:/Documents/Kirby Workshop/ARGC-win32-shipping/FM 5.9F (Current)/FM-v5.9-Slippi-r10-Win/User/GC/MemoryCardA.USA.raw\nMemcardBPath = F:/Documents/Kirby Workshop/ARGC-win32-shipping/FM 5.9F (Current)/FM-v5.9-Slippi-r10-Win/User/GC/MemoryCardB.USA.raw\nAgpCartAPath = \nAgpCartBPath = \nSlotA = 255\nSlotB = 10\nSerialPort1 = 5\nBBA_MAC = 00:09:bf:1d:22:25\nSIDevice0 = 7\nAdapterRumble0 = False\nSimulateKonga0 = False\nSIDevice1 = 0\nAdapterRumble1 = False\nSimulateKonga1 = False\nSIDevice2 = 0\nAdapterRumble2 = False\nSimulateKonga2 = False\nSIDevice3 = 0\nAdapterRumble3 = False\nSimulateKonga3 = False\nWiiSDCard = False\nWiiKeyboard = False\nWiimoteContinuousScanning = False\nWiimoteEnableSpeaker = False\nRunCompareServer = False\nRunCompareClient = False\nEmulationSpeed = 1.00000000\nFrameSkip = 0x00000000\nOverclock = 1.00000000\nOverclockEnable = False\nGFXBackend = \nGPUDeterminismMode = auto\nPerfMapDir = \nEnableCustomRTC = False\nCustomRTCValue = 0x386d4380\nAllowAllNetplayVersions = True\nQoSEnabled = True\nAdapterWarning = True\nShownLagReductionWarning = False\n[Movie]\nPauseMovie = False\nAuthor = \nDumpFrames = False\nDumpFramesSilent = False\nShowInputDisplay = False\nShowRTC = False\n[DSP]\nEnableJIT = True\nDumpAudio = False\nDumpAudioSilent = False\nDumpUCode = False\nBackend = Cubeb\nVolume = 25\nCaptureLog = False\n[Input]\nBackgroundInput = False\n[FifoPlayer]\nLoopReplay = True\n[Analytics]\nID = a6857848fbbd3db6a6bac458d4c559c3\nEnabled = False\nPermissionAsked = True\n[Network]\nSSLDumpRead = False\nSSLDumpWrite = False\nSSLVerifyCert = False\nSSLDumpRootCA = False\nSSLDumpPeerCert = False\n[BluetoothPassthrough]\nEnabled = False\nVID = -1\nPID = -1\nLinkKeys = \n[Sysconf]\nSensorBarPosition = 1\nSensorBarSensitivity = 50331648\nSpeakerVolume = 88\nWiimoteMotor = True\nWiiLanguage = 1\nAspectRatio = 1\nScreensaver = 0\n[NetPlay]\nSelectedHostGame = Kirby Air Ride Hack Pack v1.01 (KHPE01)\nTraversalChoice = direct\nNickname = kirby 1\nHostCode = 72e6152e\nConnectPort = 2626\nHostPort = 2626\nListenPort = 0\nNetWindowPosX = 672\nNetWindowPosY = 129\nNetWindowWidth = 1149\nNetWindowHeight = 726\nAddress = 127.0.0.1\nUseUPNP = True";
-		System.IO.StreamWriter file = new System.IO.StreamWriter(installerData.installPath + "/Clients/kar-netplay-win/User/Config/Dolphin.ini");
-		file.WriteLine(dolphinINI);
-		file.Close();
-		AddTextNotification("Configured KARphin Legacy", systemEventInProgess_FontColor);
-	
+		//run the Updater to get the latest Dolphin client
+
+		//overwrite the User data folder with the one from the legacy KARphin
+		if(installerData.isMigrating)
+		{
+			string userFolder = installerData.R10Path + "/User";
+			string target = installerData.installPath + "/Clients/User";
+			Directory.Delete(target); Directory.CreateDirectory(installerData.installPath + "/Clients/User");
+			string[] entries = Directory.GetFileSystemEntries(userFolder);
+			foreach (string fileOrDir in entries)
+			{
+				Directory.Move(fileOrDir, Path.Combine(target, 
+				fileOrDir.Substring(userFolder.Length + 1)));
+			}
+
+			AddTextNotification("Migrated KARphin Legacy data to KARphin", systemEventInProgess_FontColor);
+		}
+		else //write the data for the ROM locates
+		{
+			
+		}
+
 		//runs Dolphin
 		var dolphin = new Process();
-		dolphin.StartInfo.FileName = installerData.installPath + "/Clients/kar-netplay-win/Dolphin.exe";
-		dolphin.StartInfo.WorkingDirectory = installerData.installPath + "/Clients/kar-netplay-win";
+		dolphin.StartInfo.FileName = installerData.installPath + "/Clients/KARphin_Legacy";
+		dolphin.StartInfo.WorkingDirectory = installerData.installPath + "/Clients";
 		dolphin.Start();
 		AddTextNotification("Installing is done, feel free to close the installer. Welcome to The City :3", itemHasFinished_FontColor);
 	}
